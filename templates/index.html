@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RAG Chatbot — Groq + LlamaIndex</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">🤖</span>
+        <h2>RAG Chatbot</h2>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">📂 Upload Documents</label>
+        <p class="hint">PDF, TXT, MD, DOCX, CSV, XLSX, JSON · max 20MB</p>
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" multiple
+                 accept=".pdf,.txt,.md,.docx,.csv,.xlsx,.json,.pptx" hidden />
+          <p>Drop files here or <span class="link" onclick="document.getElementById('fileInput').click()">browse</span></p>
+        </div>
+        <div id="fileList" class="file-list"></div>
+        <button class="btn btn-primary" id="buildBtn" onclick="buildIndex()">
+          🔨 Build Index
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="sidebar-section" id="statusSection">
+        <div id="dbStatus" class="status-badge info">💾 Pinecone: checking...</div>
+        <button class="btn btn-danger" id="clearBtn" onclick="clearDatabase()" style="display:none">
+          🗑️ Clear Database
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="sidebar-section" id="indexedSection" style="display:none">
+        <label class="section-label">📄 Indexed Files</label>
+        <div id="indexedFiles"></div>
+      </div>
+    </aside>
+
+    <!-- ── Main chat area ── -->
+    <main class="chat-area">
+      <div class="chat-header">
+        <h1>🤖 RAG Chatbot <span class="subtitle">— Powered by Groq + LlamaIndex + Pinecone</span></h1>
+      </div>
+
+      <div class="messages" id="messages">
+        <div class="empty-state" id="emptyState">
+          <p>👈 Upload documents and click <strong>Build Index</strong> to get started.</p>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <div class="input-row">
+          <textarea
+            id="userInput"
+            placeholder="Ask a question about your documents..."
+            rows="1"
+            onkeydown="handleKey(event)"
+          ></textarea>
+          <button class="send-btn" onclick="sendMessage()" id="sendBtn">➤</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
