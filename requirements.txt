@@ -1,0 +1,28 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart          # required for FastAPI file uploads
+
+# ── LlamaIndex core + integrations ────────────────────────────────────────────
+llama-index-core
+llama-index-llms-groq
+llama-index-embeddings-huggingface
+llama-index-vector-stores-pinecone
+llama-index-readers-file  # PyMuPDFReader
+
+# ── Embeddings ─────────────────────────────────────────────────────────────────
+sentence-transformers
+
+# ── PDF extraction ─────────────────────────────────────────────────────────────
+pymupdf                   # fast PDF text extraction (fitz)
+
+# ── Vector store ───────────────────────────────────────────────────────────────
+pinecone                  # Pinecone v3+ client
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-dotenv
+
+# ── Optional: OCR fallback for scanned/image PDFs ─────────────────────────────
+# Uncomment if you need OCR support:
+# pytesseract
+# pdf2image
