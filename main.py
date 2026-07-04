@@ -99,7 +99,7 @@ def sanitise_text(text: str):
     if len(text) > 0 and non_latin / len(text) > MAX_NON_LATIN:
         return None
     return text
-
+x
 def strip_markers(text: str) -> str:
     text = re.sub(r"\|W\|", " ", text)
     text = re.sub(r"\[Source\s*\d+\s*[—–-][^\]]*\]", "", text)
