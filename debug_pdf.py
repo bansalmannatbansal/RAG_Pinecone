@@ -1,97 +1,52 @@
 """
-debug_pdf.py — Standalone script to verify PDF text extraction before indexing.
-
-Run this BEFORE building the index to confirm that PyMuPDF is correctly
-installed and that real document text (not raw PDF bytes) is being extracted.
-
-Usage:
-    python debug_pdf.py
-    python debug_pdf.py /path/to/custom/dir   # optional custom directory
-
-Expected output:
-    FILE: Daily_Sahayak.pdf
-    --- Page 1 ---
-    Daily Sahayak
-    Closing the Execution Gap
-    ...
-
-If you see '%PDF-1.7' or binary-looking output, PyMuPDF is not installed.
-Fix: pip install pymupdf llama-index-readers-file
+check_page3.py — checks whether Data Heist.pdf page 3 was indexed,
+and if so, what score it gets for a team-size query.
 """
-
 import os
-import sys
-from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
-# ── Directory to scan ──────────────────────────────────────────────────────────
-TMP_DIR = sys.argv[1] if len(sys.argv) > 1 else "/tmp/rag_docs"
+from llama_index.core import Settings
+from llama_index.llms.groq import Groq
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from pinecone_store import load_index
 
-# ── Check PyMuPDF is installed ─────────────────────────────────────────────────
-try:
-    from llama_index.readers.file import PyMuPDFReader
-    pdf_reader = PyMuPDFReader()
-    print("✅ PyMuPDF is installed.\n")
-except ImportError:
-    print("❌ PyMuPDF is NOT installed.")
-    print("   Fix: pip install pymupdf llama-index-readers-file")
-    sys.exit(1)
+# Same settings init as main.py
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+Settings.llm = Groq(model="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
+Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-from llama_index.core import SimpleDirectoryReader
+index = load_index()
+if not index:
+    print("No index found — did you build it yet?")
+    exit()
 
-# ── Scan directory ─────────────────────────────────────────────────────────────
-if not os.path.isdir(TMP_DIR):
-    print(f"❌ Directory not found: {TMP_DIR}")
-    print("   Upload a document via the Streamlit UI first, then run this script.")
-    sys.exit(1)
+retriever = index.as_retriever(similarity_top_k=25)
 
-files = [f for f in os.listdir(TMP_DIR) if os.path.isfile(os.path.join(TMP_DIR, f))]
-if not files:
-    print(f"❌ No files found in {TMP_DIR}")
-    print("   Upload a document via the Streamlit UI first, then run this script.")
-    sys.exit(1)
+print("\n--- Query: 'team size members' ---")
+nodes = retriever.retrieve("team size members")
+found_p3 = False
+for n in nodes:
+    meta = n.node.metadata or {}
+    fname = meta.get("file_name") or meta.get("filename") or ""
+    page  = meta.get("page_label") or meta.get("page_number") or "?"
+    if "Data Heist" in fname:
+        marker = " <-- PAGE 3" if str(page) == "3" else ""
+        print(f"  page {page} | score {n.score:.4f} | {n.node.get_content()[:80]!r}{marker}")
+        if str(page) == "3":
+            found_p3 = True
 
-print(f"Found {len(files)} file(s) in {TMP_DIR}\n")
+print(f"\nPage 3 found in top-25 results: {found_p3}")
 
-for fname in files:
-    fpath = os.path.join(TMP_DIR, fname)
-    ext   = Path(fname).suffix.lower()
-
-    print(f"{'=' * 60}")
-    print(f"FILE: {fname}  ({ext})")
-    print(f"{'=' * 60}")
-
-    try:
-        if ext == ".pdf":
-            docs = pdf_reader.load_data(file=fpath)
-        else:
-            docs = SimpleDirectoryReader(input_files=[fpath]).load_data()
-
-        if not docs:
-            print("⚠️  No pages/chunks returned — file may be empty.\n")
-            continue
-
-        total_chars = sum(len(d.text) for d in docs)
-        print(f"Pages/chunks extracted: {len(docs)}")
-        print(f"Total characters: {total_chars}\n")
-
-        for i, doc in enumerate(docs[:3], 1):
-            preview = doc.text.strip()[:500]
-
-            # Check for raw PDF bytes
-            if preview.startswith("%PDF"):
-                print(f"--- Page/chunk {i} ---")
-                print("❌ RAW PDF BYTES DETECTED — extraction failed.")
-                print("   This means PyMuPDF is not being used correctly.")
-                print(f"   Raw preview: {preview[:100]!r}\n")
-            else:
-                print(f"--- Page/chunk {i} ---")
-                print(preview)
-                print()
-
-    except Exception as e:
-        print(f"❌ ERROR loading {fname}: {e}\n")
-
-print("=" * 60)
-print("Debug complete.")
-print("If all previews show real text, your PDF extraction is working correctly.")
-print("You can now rebuild the index via the Streamlit UI.")
+# Also directly check ALL chunks for Data Heist.pdf regardless of query,
+# to see if page 3 was even indexed at all
+print("\n--- All indexed Data Heist.pdf chunks (any page) ---")
+all_nodes = retriever.retrieve("data heist rule book event")
+pages_seen = set()
+for n in all_nodes:
+    meta = n.node.metadata or {}
+    fname = meta.get("file_name") or meta.get("filename") or ""
+    if "Data Heist" in fname:
+        page = meta.get("page_label") or meta.get("page_number") or "?"
+        pages_seen.add(str(page))
+print("Pages seen across all Data Heist.pdf chunks in this retrieval:", sorted(pages_seen))

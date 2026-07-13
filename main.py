@@ -34,7 +34,7 @@ CHUNK_OVERLAP       = 50
 MAX_FILE_SIZE       = 20 * 1024 * 1024
 ALLOWED_TYPES       = {"pdf", "txt", "md", "docx", "csv", "xlsx", "json", "pptx"}
 MIN_SCORE           = 0.20
-MAX_CHUNKS_PER_FILE = 5
+MAX_CHUNKS_PER_FILE = 6
 MAX_CHUNK_CHARS     = 6000
 MAX_HISTORY_CHARS   = 600
 MAX_NON_LATIN       = 0.25
@@ -99,7 +99,7 @@ def sanitise_text(text: str):
     if len(text) > 0 and non_latin / len(text) > MAX_NON_LATIN:
         return None
     return text
-x
+
 def strip_markers(text: str) -> str:
     text = re.sub(r"\|W\|", " ", text)
     text = re.sub(r"\[Source\s*\d+\s*[—–-][^\]]*\]", "", text)
@@ -212,6 +212,27 @@ def retrieve_cross_document(user_input: str) -> list:
     all_nodes.sort(key=lambda n: n.score or 0, reverse=True)
     return all_nodes
 
+def retrieve_with_variants(query: str, retriever):
+    """
+    Retrieval is sensitive to embedding drift on short, entity-heavy queries
+    (e.g. 'data heist' vs 'Data Heist' scoring very differently against the
+    same source chunks). Try the query as typed first; if nothing clears
+    MIN_SCORE, retry once with a title-cased variant before giving up.
+    This does NOT lower MIN_SCORE — it just gives the retriever a second,
+    differently-cased shot at the same question.
+    """
+    nodes = retriever.retrieve(query)
+    if any(n.score is not None and n.score >= MIN_SCORE for n in nodes):
+        return nodes
+
+    variant = query.title()
+    if variant != query:
+        variant_nodes = retriever.retrieve(variant)
+        if any(n.score is not None and n.score >= MIN_SCORE for n in variant_nodes):
+            return variant_nodes
+
+    return nodes  # fall through to the existing fallback logic in /chat
+
 def build_standalone_query(user_input: str, history: list) -> str:
     user_turns = [m for m in history if m["role"] == "user"]
     if len(user_turns) < 1:
@@ -320,7 +341,10 @@ async def chat(req: ChatRequest):
 
     async def generate() -> AsyncGenerator[str, None]:
         user_input = req.message
-        history    = state["chat_history"]
+        history    = list(state["chat_history"])  # snapshot BEFORE appending — was a live
+                                                    # reference before, so appending below
+                                                    # would leak the current question into
+                                                    # "previous" history mid-request.
 
         # Add user message to history
         state["chat_history"].append({"role": "user", "content": user_input})
@@ -333,13 +357,43 @@ async def chat(req: ChatRequest):
             if is_cross_document_query(standalone, state["indexed_files"]):
                 all_nodes = retrieve_cross_document(standalone)
             else:
-                all_nodes = state["retriever"].retrieve(standalone)
+                all_nodes = retrieve_with_variants(standalone, state["retriever"])
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
             return
 
-        # Score filter
+        # Score filter — plus a narrow "near-miss" rescue.
+        # MIN_SCORE stays exactly as configured (0.20) for the bulk of chunks.
+        # Chunks that fall just short (within NEAR_MISS_MARGIN below MIN_SCORE)
+        # are still considered, capped at NEAR_MISS_LIMIT per query, so that
+        # borderline-but-genuinely-relevant chunks (e.g. OCR'd infographic
+        # pages scoring 0.198 vs a 0.20 cutoff) aren't silently dropped just
+        # because other stronger chunks already cleared the main threshold
+        # and kept the old fallback-when-empty logic from ever running.
+        # Replace the near_miss sorting with keyword-aware ranking.
+        NEAR_MISS_MARGIN = 0.05
+        NEAR_MISS_LIMIT  = 3
+
+        query_words = {w for w in standalone.lower().split() if len(w) > 3}
+
+        def keyword_overlap(n):
+            content = n.node.get_content().lower()
+            return sum(1 for w in query_words if w in content)
+
         scored = [n for n in all_nodes if n.score is not None and n.score >= MIN_SCORE]
+        scored_ids = {id(n.node) for n in scored}
+        near_miss = [
+            n for n in all_nodes
+            if id(n.node) not in scored_ids
+            and n.score is not None
+            and n.score >= (MIN_SCORE - NEAR_MISS_MARGIN)
+        ]
+        # Rank near-misses by keyword overlap first, score second — a chunk that
+        # literally contains query words (even if OCR-garbled elsewhere) beats a
+        # higher-scoring but semantically unrelated chunk (e.g. a thank-you slide).
+        near_miss.sort(key=lambda n: (keyword_overlap(n), n.score or 0), reverse=True)
+        scored = scored + near_miss[:NEAR_MISS_LIMIT]
+
         source_nodes = []
         for n in scored:
             raw   = n.node.get_content()
@@ -348,7 +402,7 @@ async def chat(req: ChatRequest):
                 n.node.set_content(clean)
                 source_nodes.append(n)
 
-        # Fallback
+        # Fallback — unchanged, still only fires if the above found nothing at all
         if not source_nodes:
             fallback = max(0.10, MIN_SCORE - 0.05)
             for n in all_nodes:
@@ -395,7 +449,7 @@ async def chat(req: ChatRequest):
             context_parts.append(part)
             total_chars += len(part)
             file_chunk_count[fname] += 1
-
+            print(f"[DEBUG] total_chars={total_chars}, chunks_included={len(context_parts)}, per_file={file_chunk_count}")
         if not context_parts:
             msg = "Found documents but couldn't fit content in context. Ask a more specific question."
             state["chat_history"].append({"role": "assistant", "content": msg})
