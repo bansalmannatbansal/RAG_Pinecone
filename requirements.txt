@@ -1,1 +1,30 @@
-pip install -r requirements.txt --break-system-packages
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9          # required for FastAPI file uploads
+
+# ── LlamaIndex core + integrations ────────────────────────────────────────────
+llama-index-core==0.11.14
+llama-index-llms-groq==0.2.0
+llama-index-embeddings-huggingface==0.3.1
+llama-index-vector-stores-pinecone==0.8.0
+llama-index-readers-file==0.2.2  # PyMuPDFReader
+
+# ── Embeddings ─────────────────────────────────────────────────────────────────
+sentence-transformers==3.1.1
+transformers==4.44.2
+huggingface-hub==0.24.6
+
+# ── PDF extraction ─────────────────────────────────────────────────────────────
+pymupdf==1.24.10                   # fast PDF text extraction (fitz)
+
+# ── Vector store ───────────────────────────────────────────────────────────────
+pinecone==5.0.1                    # Pinecone v3+ client
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Optional: OCR fallback for scanned/image PDFs ─────────────────────────────
+# Uncomment if you need OCR support:
+# pytesseract
+# pdf2image
