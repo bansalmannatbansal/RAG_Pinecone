@@ -17,10 +17,10 @@ transformers==4.44.2
 huggingface-hub==0.24.6
 
 # ── PDF extraction ─────────────────────────────────────────────────────────────
-pymupdf==1.24.10                   # fast PDF text extraction (fitz)
+pymupdf                            # fast PDF text extraction (fitz)
 
 # ── Vector store ───────────────────────────────────────────────────────────────
-pinecone==5.0.1                    # Pinecone v3+ client
+pinecone>=7.0.0,<8.0.0             # required by llama-index-vector-stores-pinecone 0.8.0
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1
